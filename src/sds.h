@@ -39,10 +39,31 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+/*
+ * 类型别名，用于指向 sdshdr 的 buf 属性
+ */
 typedef char *sds;
 
+/* 注意一些 C 语言的语法
+ * 1. __attribute__ ((packed)) 
+ *    它的作用就是告诉编译器取消结构在编译过程中的优化对齐，按照实际占用字节数进行对齐，是 GCC 特有的语法。这个功能是跟操作系统没关系，跟编译器有关，GCC 编译器不是紧凑模式的。在 Windows 下，用 VC 的编译器也不是紧凑的，用 TC 的编译器就是紧凑的。例如：
+ *    在 TC 下：struct my{ char ch; int a;} sizeof(int) = 2; sizeof(my) = 3;（紧凑模式）
+ *    在 GCC 下：struct my{ char ch; int a;} sizeof(int) = 4; sizeof(my) = 8;（非紧凑模式）
+ *    在 GCC 下：struct my{ char ch; int a;}__attrubte__ ((packed)) sizeof(int) = 4; sizeof(my) = 5;（紧凑模式）
+ *    如下定义的 sdshdr 的结构用于计算需要分配的空间
+ * 2. Struct Hack
+ *    Struct 中有且仅有一个变长的字段，且该字段是 Struct 中最后的一个字段，这样在分配空间的时候，可以直接给这个变长字段分配空间，而不仅仅只是分配指针的空间
+ *    在 sdshdr 的定义中，使用了 Struct Hack，使得只要知道 buf 字段的起始位置指针，就可以推导获得 header 字段的起始位置指针
+ *    具体的语法特性参见 http://c2.com/cgi/wiki?StructHack
+ * 3. 柔性数组（flexible array member）
+ *    sdshdr 的 buf 属性并没有指明数组的尺寸，被称为柔性数组，它在 sizeof struct 的时候并不计入
+ *    参见 https://en.wikipedia.org/wiki/Flexible_array_member
+ */
+
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
- * However is here to document the layout of type 5 SDS strings. */
+ * However is here to document the layout of type 5 SDS strings.
+ * 实际的 sds 结构，其中 sdshdr5 不会在实际的编码中使用
+ */
 struct __attribute__ ((__packed__)) sdshdr5 {
     unsigned char flags; /* 3 lsb of type, and 5 msb of string length */
     char buf[];
@@ -72,17 +93,25 @@ struct __attribute__ ((__packed__)) sdshdr64 {
     char buf[];
 };
 
+/* sds 的类型常量，类型存于 flags 的最低 3 位 */
 #define SDS_TYPE_5  0
 #define SDS_TYPE_8  1
 #define SDS_TYPE_16 2
 #define SDS_TYPE_32 3
 #define SDS_TYPE_64 4
+/* SDS_TYPE_MASK 用来与 flags 配合，获得 sds 的类型，注意 7 的二进制表示是 111，与它进行 & 操作以后能获得最低 3 位的值 */
 #define SDS_TYPE_MASK 7
+/* 与 sdshdr5 配合使用，flags 的最低 3 位存储类型，高位用于长度 */
 #define SDS_TYPE_BITS 3
+/* 以下两个是用于获取 sds header 起始位置的指针 */
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
+/* 获取 sdshdr5 flags 字段的高 5 位，即长度 */
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
+/*
+ * 获得 sds 的实际长度
+ */
 static inline size_t sdslen(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -100,6 +129,9 @@ static inline size_t sdslen(const sds s) {
     return 0;
 }
 
+/*
+ * 获得 sds 可用的空间大小
+ */
 static inline size_t sdsavail(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -126,11 +158,15 @@ static inline size_t sdsavail(const sds s) {
     return 0;
 }
 
+/*
+ * 设置 sds 的实际长度
+ */
 static inline void sdssetlen(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
             {
+                /* 直接将长度设置到 flags 字段的高 5 位 */
                 unsigned char *fp = ((unsigned char*)s)-1;
                 *fp = SDS_TYPE_5 | (newlen << SDS_TYPE_BITS);
             }
@@ -150,6 +186,9 @@ static inline void sdssetlen(sds s, size_t newlen) {
     }
 }
 
+/*
+ * 调整 sds 的实际长度
+ */
 static inline void sdsinclen(sds s, size_t inc) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -175,7 +214,9 @@ static inline void sdsinclen(sds s, size_t inc) {
     }
 }
 
-/* sdsalloc() = sdsavail() + sdslen() */
+/* sdsalloc() = sdsavail() + sdslen() 
+ * 获得 sds 全部的空间大小
+ */
 static inline size_t sdsalloc(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -193,6 +234,9 @@ static inline size_t sdsalloc(const sds s) {
     return 0;
 }
 
+/*
+ * 设置 sds 的全部空间大小
+ */
 static inline void sdssetalloc(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
