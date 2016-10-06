@@ -45,7 +45,10 @@
 #include <stdint.h>
 
 /* Toggle the 16 bit unsigned integer pointed by *p from little endian to
- * big endian */
+ * big endian 
+ *
+ * 将两字节的数据从小端表示法变为大端表示法
+ */
 void memrev16(void *p) {
     unsigned char *x = p, t;
 
@@ -55,7 +58,10 @@ void memrev16(void *p) {
 }
 
 /* Toggle the 32 bit unsigned integer pointed by *p from little endian to
- * big endian */
+ * big endian 
+ *
+ * 将四字节的数据从小端表示法变为大端表示法
+ */
 void memrev32(void *p) {
     unsigned char *x = p, t;
 
@@ -68,7 +74,10 @@ void memrev32(void *p) {
 }
 
 /* Toggle the 64 bit unsigned integer pointed by *p from little endian to
- * big endian */
+ * big endian 
+ *
+ * 将八字节的数据从小端表示法变为大端表示法
+ */
 void memrev64(void *p) {
     unsigned char *x = p, t;
 
@@ -86,16 +95,25 @@ void memrev64(void *p) {
     x[4] = t;
 }
 
+/*
+ * 将 uint16_t 类型的整数从小端表示法变为大端表示法
+ */
 uint16_t intrev16(uint16_t v) {
     memrev16(&v);
     return v;
 }
 
+/*
+ * 将 uint32_t 类型的整数从小端表示法变为大端表示法
+ */
 uint32_t intrev32(uint32_t v) {
     memrev32(&v);
     return v;
 }
 
+/*
+ * 将 uint64_t 类型的整数从小端表示法变为大端表示法
+ */
 uint64_t intrev64(uint64_t v) {
     memrev64(&v);
     return v;

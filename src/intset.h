@@ -33,9 +33,12 @@
 #include <stdint.h>
 
 typedef struct intset {
-    uint32_t encoding;
-    uint32_t length;
-    int8_t contents[];
+    uint32_t encoding;     // 保存的整数的类型，默认为 INTSET_ENC_INT16，可选的有 INTSET_ENC_INT32 和 INTSET_ENC_INT64
+    uint32_t length;       // 保存的整数的个数
+    int8_t contents[];     // 虽然使用的是 int8_t 数组，但是并不意味着只能保存 int8_t 类型的整数
+                           // 只是因为 int8_t 对应的是一个字节，是存储的基本单位
+                           // 根据 encoding 的不同，每个整数占用的字节数也不同
+                           // 默认使用小端表示法
 } intset;
 
 intset *intsetNew(void);
