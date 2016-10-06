@@ -45,53 +45,56 @@
 #define DICT_NOTUSED(V) ((void) V)
 
 typedef struct dictEntry {
-    void *key;
+    void *key;               // 键
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
         double d;
-    } v;
-    struct dictEntry *next;
+    } v;                     // 值
+    struct dictEntry *next;  // 下一个拥有一样哈希值的键值对，通过链表解决冲突
 } dictEntry;
 
 typedef struct dictType {
-    unsigned int (*hashFunction)(const void *key);
-    void *(*keyDup)(void *privdata, const void *key);
-    void *(*valDup)(void *privdata, const void *obj);
-    int (*keyCompare)(void *privdata, const void *key1, const void *key2);
-    void (*keyDestructor)(void *privdata, void *key);
-    void (*valDestructor)(void *privdata, void *obj);
+    unsigned int (*hashFunction)(const void *key);                           // 哈希函数
+    void *(*keyDup)(void *privdata, const void *key);                        // 键的复制函数
+    void *(*valDup)(void *privdata, const void *obj);                        // 值得复制函数
+    int (*keyCompare)(void *privdata, const void *key1, const void *key2);   // 键的比较函数
+    void (*keyDestructor)(void *privdata, void *key);                        // 键的销毁函数
+    void (*valDestructor)(void *privdata, void *obj);                        // 值得销毁函数
 } dictType;
 
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
 typedef struct dictht {
-    dictEntry **table;
-    unsigned long size;
-    unsigned long sizemask;
-    unsigned long used;
+    dictEntry **table;       // 哈希表
+    unsigned long size;      // 哈希表的大小
+    unsigned long sizemask;  // 哈希表的掩码值，总是等于 size - 1
+    unsigned long used;      // 哈希表中元素的值，用来计算负载因子
 } dictht;
 
 typedef struct dict {
-    dictType *type;
-    void *privdata;
-    dictht ht[2];
-    long rehashidx; /* rehashing not in progress if rehashidx == -1 */
-    unsigned long iterators; /* number of iterators currently running */
+    dictType *type;          // 哈希表值的类型
+    void *privdata;          // 私有数据，用于哈希表类型的各项操作
+    dictht ht[2];            // 定义了两个哈希表，用于 Rehash 操作
+    long rehashidx;          // 下一个需要进行 rehash 的索引值，若为 -1，则不在进行 rehash
+    unsigned long iterators; // 安全迭代器的个数，当有安全迭代器的时候，不进行单步 rehash
 } dict;
 
 /* If safe is set to 1 this is a safe iterator, that means, you can call
  * dictAdd, dictFind, and other functions against the dictionary even while
  * iterating. Otherwise it is a non safe iterator, and only dictNext()
- * should be called while iterating. */
+ * should be called while iterating. 
+ *
+ * 只有安全的 iterator 可以调用各种函数，而不安全的只能调用 dictNext
+ */
 typedef struct dictIterator {
-    dict *d;
-    long index;
-    int table, safe;
-    dictEntry *entry, *nextEntry;
+    dict *d;                          // 迭代器对应的字典
+    long index;                       // 正在遍历的哈希表的哈希值
+    int table, safe;                  // table - 哈希表的索引值，0 或 1 safe - 是否安全
+    dictEntry *entry, *nextEntry;     // 当前的 entry，和下一个要遍历到的 entry
     /* unsafe iterator fingerprint for misuse detection. */
-    long long fingerprint;
+    long long fingerprint;            // 概要信息，非安全的迭代器需要记录概要，在完成的时候判断是否误用了
 } dictIterator;
 
 typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
