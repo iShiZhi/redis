@@ -40,7 +40,20 @@
  * container: 2 bits, NONE=1, ZIPLIST=2.
  * recompress: 1 bit, bool, true if node is temporarry decompressed for usage.
  * attempted_compress: 1 bit, boolean, used for verifying during testing.
- * extra: 12 bits, free for future use; pads out the remainder of 32 bits */
+ * extra: 12 bits, free for future use; pads out the remainder of 32 bits 
+ *
+ * 这里定义了快速列表的节点结构，包含了：
+ * 1. prev、next：前驱节点和后继节点的指针
+ * 2. zl：指向压缩列表的指针
+ * 3. sz：压缩列表中的字节数
+ * 4. 32 位的标记，包括：
+ *    a. count（16 bits）：压缩列表包含的数据项
+ *    b. encoding（2 bits）：表示是否压缩过
+ *    c. container（2 bits）：预留字段，当前是固定值 2
+ *    d. recompress（1 bit）：置为 1 的时候表示需要将压缩列表重新压缩
+ *    e. attempted_compress（1 bit）：测试时用的字段，表示不需要进行压缩
+ *    f. extra（10 bits）：还未用上的预留空间
+ */
 typedef struct quicklistNode {
     struct quicklistNode *prev;
     struct quicklistNode *next;
@@ -58,7 +71,12 @@ typedef struct quicklistNode {
  * 'sz' is byte length of 'compressed' field.
  * 'compressed' is LZF data with total (compressed) length 'sz'
  * NOTE: uncompressed length is stored in quicklistNode->sz.
- * When quicklistNode->zl is compressed, node->zl points to a quicklistLZF */
+ * When quicklistNode->zl is compressed, node->zl points to a quicklistLZF 
+ *
+ * 压缩以后的压缩列表，包含：
+ * 1. sz：压缩以后使用的字节数
+ * 2. compressed：压缩以后的压缩列表内容
+ */
 typedef struct quicklistLZF {
     unsigned int sz; /* LZF size in bytes*/
     char compressed[];
@@ -69,7 +87,18 @@ typedef struct quicklistLZF {
  * 'len' is the number of quicklist nodes.
  * 'compress' is: -1 if compression disabled, otherwise it's the number
  *                of quicklistNodes to leave uncompressed at ends of quicklist.
- * 'fill' is the user-requested (or default) fill factor. */
+ * 'fill' is the user-requested (or default) fill factor. 
+ *
+ * 快速列表的结构，包括：
+ * 1. head、tail：列表表头和表尾指针
+ * 2. count：所有的压缩列表的节点数总和
+ * 3. len：快速列表的节点数
+ * 4. 32 位的标记：
+ *    a. fill（16 bits）：ziplist 大小设置，存放 list-max-ziplist-size 参数的值，
+ *       若为负责，则表示ziplist的最大字节数，取值为 -1（4 Kb），-2（8 Kb），-3（16 Kb），-4（32 Kb），-5（64 Kb）
+ *       若为正数，则表示ziplist的最大节点数，最大为 2^15
+ *    b. compress（16 bits）：节点压缩深度设置，存放 list-compress-depth 参数的值，表示前后各有几个节点不压缩，0 是个特殊值，表示所有节点都不压缩，这是 Redis 的默认值
+ */
 typedef struct quicklist {
     quicklistNode *head;
     quicklistNode *tail;
@@ -79,22 +108,25 @@ typedef struct quicklist {
     unsigned int compress : 16; /* depth of end nodes not to compress;0=off */
 } quicklist;
 
+// 快速列表的迭代器，用于遍历快速列表中所有压缩列表的所有节点，按照每个压缩列表节点进行遍历
+// 可以选择遍历压缩列表的方向，从头遍历 AL_START_HEAD 或者从尾遍历 AL_START_TAIL
 typedef struct quicklistIter {
-    const quicklist *quicklist;
-    quicklistNode *current;
-    unsigned char *zi;
-    long offset; /* offset in current ziplist */
-    int direction;
+    const quicklist *quicklist;    // 遍历的快速列表指针
+    quicklistNode *current;        // 遍历的快速列表节点指针
+    unsigned char *zi;             // 遍历到的压缩列表节点的指针
+    long offset;                   // 遍历到的压缩列表节点的偏移量
+    int direction;                 // 遍历方向 AL_START_HEAD 或 AL_START_TAIL
 } quicklistIter;
 
+// 快速列表迭代过程中取出的压缩列表节点的结构
 typedef struct quicklistEntry {
-    const quicklist *quicklist;
-    quicklistNode *node;
-    unsigned char *zi;
-    unsigned char *value;
-    long long longval;
-    unsigned int sz;
-    int offset;
+    const quicklist *quicklist;    // 快速列表指针
+    quicklistNode *node;           // 快速列表的节点指针
+    unsigned char *zi;             // 压缩列表节点的指针
+    unsigned char *value;          // 压缩列表节点的字符串指针（如果内容无法保存到 longval 的话）
+    long long longval;             // 压缩列表节点的数值
+    unsigned int sz;               // 压缩列表节点的字符串长度
+    int offset;                    // 压缩列表节点的索引值，如果从后向前遍历时，为负数
 } quicklistEntry;
 
 #define QUICKLIST_HEAD 0
