@@ -434,7 +434,10 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* A redis object, that is a type able to hold a string / list / set */
 
-/* The actual Redis Object */
+/* The actual Redis Object 
+ *
+ * Redis 对象的五种类型
+ */
 #define OBJ_STRING 0
 #define OBJ_LIST 1
 #define OBJ_SET 2
@@ -527,7 +530,10 @@ typedef struct RedisModuleIO {
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
- * is set to one of this fields for this object. */
+ * is set to one of this fields for this object. 
+ *
+ * Redis 对象使用的底层数据结构类型
+ */
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
@@ -544,6 +550,15 @@ typedef struct RedisModuleIO {
 #define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 
 #define OBJ_SHARED_REFCOUNT INT_MAX
+
+/*
+ * Redis 对象结构
+ * - type：对象的类型
+ * - encoding：使用的底层数据结构
+ * - lru：对象最后一次被访问的时间，用于 lru 替换算法使用
+ * - refcount：引用计数器，用于对象的共享和清理
+ * - ptr：指向底层数据结构的指针
+ */ 
 typedef struct redisObject {
     unsigned type:4;
     unsigned encoding:4;
@@ -770,7 +785,10 @@ typedef struct redisOpArray {
 } redisOpArray;
 
 /* This structure is returned by the getMemoryOverheadData() function in
- * order to return memory overhead information. */
+ * order to return memory overhead information. 
+ *
+ * 内存的开销情况
+ */
 struct redisMemOverhead {
     size_t peak_allocated;
     size_t total_allocated;

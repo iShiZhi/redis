@@ -45,6 +45,9 @@ void zlibc_free(void *ptr) {
 #include "zmalloc.h"
 #include "atomicvar.h"
 
+/*
+ * 设置用来存储分配的空间大小的空间
+ */
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
 #else
@@ -55,7 +58,10 @@ void zlibc_free(void *ptr) {
 #endif
 #endif
 
-/* Explicitly override malloc/free etc when using tcmalloc. */
+/* Explicitly override malloc/free etc when using tcmalloc. 
+ *
+ * 如果使用 tcmalloc 或 jemalloc，则用对应的方法替代
+ */
 #if defined(USE_TCMALLOC)
 #define malloc(size) tc_malloc(size)
 #define calloc(count,size) tc_calloc(count,size)
@@ -68,6 +74,8 @@ void zlibc_free(void *ptr) {
 #define free(ptr) je_free(ptr)
 #endif
 
+// 更新使用的存储空间大小，
+// 注意，这边按照字长做了对齐
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
@@ -88,10 +96,12 @@ void zlibc_free(void *ptr) {
     } \
 } while(0)
 
+// used_memory 记录了当前 Redis 使用的内存量
 static size_t used_memory = 0;
 static int zmalloc_thread_safe = 0;
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// 处理空间不足的情况
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
@@ -101,6 +111,8 @@ static void zmalloc_default_oom(size_t size) {
 
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
+// 分配空间，并且更新内存使用情况
+// 使用非 libc 提供的 malloc时，size 信息由对应的库提供，所以不需要额外增加空间来记录 size
 void *zmalloc(size_t size) {
     void *ptr = malloc(size+PREFIX_SIZE);
 
@@ -115,6 +127,7 @@ void *zmalloc(size_t size) {
 #endif
 }
 
+// 与 zmalloc 类似，只是底层使用 calloc 实现
 void *zcalloc(size_t size) {
     void *ptr = calloc(1, size+PREFIX_SIZE);
 
@@ -129,6 +142,7 @@ void *zcalloc(size_t size) {
 #endif
 }
 
+// 使用 realloc 重新分配空间，同时更新使用的空间数
 void *zrealloc(void *ptr, size_t size) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -137,6 +151,7 @@ void *zrealloc(void *ptr, size_t size) {
     void *newptr;
 
     if (ptr == NULL) return zmalloc(size);
+// 如果使用的是第三方的库，那么由第三方来提供分配空间的大小的信息
 #ifdef HAVE_MALLOC_SIZE
     oldsize = zmalloc_size(ptr);
     newptr = realloc(ptr,size);
@@ -145,6 +160,7 @@ void *zrealloc(void *ptr, size_t size) {
     update_zmalloc_stat_free(oldsize);
     update_zmalloc_stat_alloc(zmalloc_size(newptr));
     return newptr;
+// 否则在分配空间前的连续空间中，保存该空间的大小
 #else
     realptr = (char*)ptr-PREFIX_SIZE;
     oldsize = *((size_t*)realptr);
@@ -160,7 +176,10 @@ void *zrealloc(void *ptr, size_t size) {
 
 /* Provide zmalloc_size() for systems where this function is not provided by
  * malloc itself, given that in that case we store a header with this
- * information as the first bytes of every allocation. */
+ * information as the first bytes of every allocation. 
+ *
+ * 在使用 libc 提供的 malloc 时，我们需要在分配空间的头部保存该空间的大小，使用时进行提取
+ */
 #ifndef HAVE_MALLOC_SIZE
 size_t zmalloc_size(void *ptr) {
     void *realptr = (char*)ptr-PREFIX_SIZE;
@@ -172,6 +191,7 @@ size_t zmalloc_size(void *ptr) {
 }
 #endif
 
+// 先更新使用的空间数，然后使用 free 函数进行释放
 void zfree(void *ptr) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -190,6 +210,7 @@ void zfree(void *ptr) {
 #endif
 }
 
+// 复制传入的字符串，返回新的字符串指针
 char *zstrdup(const char *s) {
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);
@@ -198,6 +219,7 @@ char *zstrdup(const char *s) {
     return p;
 }
 
+// 提取使用的内存的信息
 size_t zmalloc_used_memory(void) {
     size_t um;
 
@@ -225,7 +247,13 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
  *
  * For this kind of "fast RSS reporting" usages use instead the
  * function RedisEstimateRSS() that is a much faster (and less precise)
- * version of the function. */
+ * version of the function. 
+ *
+ * RSS：Resident Set Size，当前进程使用的内存数，可以由三种方式获取：
+ * 1. 如果定义了 PROC_FS，则从 /proc/[getpid()]/stat 中读取
+ * 2. 如果定义了 TASK_INFO，从该进程 id 对应的 task_info_t 结构中读取 resident_size 变量
+ * 3. 返回 used_memory
+ */
 
 #if defined(HAVE_PROC_STAT)
 #include <unistd.h>
@@ -290,12 +318,18 @@ size_t zmalloc_get_rss(void) {
      * return the memory usage we estimated in zmalloc()..
      *
      * Fragmentation will appear to be always 1 (no fragmentation)
-     * of course... */
+     * of course... 
+     *
+     * 如果没有办法通过操作系统的函数获得 rss，则直接返回程序估计的大小
+     */
     return zmalloc_used_memory();
 }
 #endif
 
-/* Fragmentation = RSS / allocated-bytes */
+/* Fragmentation = RSS / allocated-bytes 
+ *
+ * 由于 malloc 在分配小内存，或者进行内存对齐的时候，会有一些空闲空间，所以用 进程占用内存量 / 程序估计内存量，就可以大概估计出碎片程度
+ */
 float zmalloc_get_fragmentation_ratio(size_t rss) {
     return (float)rss/zmalloc_used_memory();
 }
@@ -309,6 +343,22 @@ float zmalloc_get_fragmentation_ratio(size_t rss) {
  * current process.
  *
  * Example: zmalloc_get_smap_bytes_by_field("Rss:",-1);
+ *
+ * smap文件可以显示更详细的内存占用数据，例如：
+ * Size:                 44 kB 虚拟内存大小
+ * Rss:                  28 kB 实际使用物理内存大小
+ * Pss:                  28 kB
+ * Shared_Clean:         0 kB 页面被改，则是dirty,否则是clean,页面引用计数>1,是shared,否则是private
+ * Shared_Dirty:          0 kB
+ * Private_Clean:        28 kB
+ * Private_Dirty:         0 kB
+ * Rss = Shared_Clean + Shared_Dirty + Private_Clean + Private_Dirty
+ *   Shared_Clean：引用大于1，未被修改  
+ *   Shared_Dirty：引用大于1，被修改  
+ *   Private_Clean：引用等于1，未被修改  
+ *   Private_Dirty：引用等于1，被修改
+ *
+ * 用于提取 smap 文件中对应字段的值，如果 pid 设置了，则访问的是对应的 smap 文件，否则访问当前进程的 smap 文件
  */
 #if defined(HAVE_PROC_SMAPS)
 size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
@@ -362,6 +412,8 @@ size_t zmalloc_get_private_dirty(long pid) {
  * 2) Was originally implemented by David Robert Nadeau.
  * 3) Was modified for Redis by Matt Stancliff.
  * 4) This note exists in order to comply with the original license.
+ *
+ * 返回物理内存的大小
  */
 size_t zmalloc_get_memory_size(void) {
 #if defined(__unix__) || defined(__unix) || defined(unix) || \

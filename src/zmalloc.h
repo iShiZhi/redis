@@ -31,7 +31,11 @@
 #ifndef __ZMALLOC_H
 #define __ZMALLOC_H
 
-/* Double expansion needed for stringification of macro values. */
+/* Double expansion needed for stringification of macro values. 
+ * 
+ * Redis 可以使用 tcmalloc 或者 libc 提供的 malloc
+ * 在分配空间的同时，Redis 将在分配的空间首个字节之前，存入该空间的大小，以便管理
+ */
 #define __xstr(s) __str(s)
 #define __str(s) #s
 
@@ -80,6 +84,7 @@ size_t zmalloc_get_smap_bytes_by_field(char *field, long pid);
 size_t zmalloc_get_memory_size(void);
 void zlibc_free(void *ptr);
 
+// 若使用 libc 的 malloc，则为其定义一个 zmalloc_size
 #ifndef HAVE_MALLOC_SIZE
 size_t zmalloc_size(void *ptr);
 #endif
