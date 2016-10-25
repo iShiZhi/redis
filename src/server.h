@@ -730,23 +730,34 @@ struct sharedObjectsStruct {
     sds minstring, maxstring;
 };
 
-/* ZSETs use a specialized version of Skiplists */
+/* ZSETs use a specialized version of Skiplists 
+ * 
+ * 跳跃列表的节点结构
+ */
 typedef struct zskiplistNode {
-    sds ele;
-    double score;
-    struct zskiplistNode *backward;
+    sds ele;      // 节点的值
+    double score; // 分值
+    struct zskiplistNode *backward; // 后退指针
     struct zskiplistLevel {
-        struct zskiplistNode *forward;
-        unsigned int span;
-    } level[];
+        struct zskiplistNode *forward; // 前进指针
+        unsigned int span;             // 前进跨度
+    } level[];    // 向上生长的若干层
 } zskiplistNode;
 
+/*
+ * 跳跃列表结构
+ */
 typedef struct zskiplist {
-    struct zskiplistNode *header, *tail;
-    unsigned long length;
-    int level;
+    struct zskiplistNode *header, *tail; // 头、尾指针
+    unsigned long length; // 节点个数
+    int level;            // 最大的层数
 } zskiplist;
 
+/*
+ * zset 的结构，包含一个字典和一个跳跃表
+ * - 字典的键为成员，值为分值，这样能用 O(1) 的时间复杂度取出对应的分值
+ * - 而跳跃表按照分值排序成员，用于支持平均复杂度为 O(log N) 的按分值定位成员操作，以及范围操作
+ */
 typedef struct zset {
     dict *dict;
     zskiplist *zsl;
@@ -1171,38 +1182,52 @@ typedef struct _redisSortOperation {
     robj *pattern;
 } redisSortOperation;
 
-/* Structure to hold list iteration abstraction. */
+/* Structure to hold list iteration abstraction. 
+ *
+ * 列表对象的迭代器
+ */
 typedef struct {
-    robj *subject;
-    unsigned char encoding;
-    unsigned char direction; /* Iteration direction */
-    quicklistIter *iter;
+    robj *subject;  // 被迭代的对象
+    unsigned char encoding;  // 被迭代对象的编码，这个版本中只能是快速列表的编码，即 OBJ_ENCODING_QUICKLIST
+    unsigned char direction; /* Iteration direction 迭代方向 */
+    quicklistIter *iter; // 快速列表的迭代器，在这个版本中，列表对象的底层实现就是快速列表
 } listTypeIterator;
 
-/* Structure for an entry while iterating over a list. */
+/* Structure for an entry while iterating over a list. 
+ *
+ * 迭代过程中使用的列表的节点结构
+ */
 typedef struct {
-    listTypeIterator *li;
-    quicklistEntry entry; /* Entry in quicklist */
+    listTypeIterator *li; // 列表的迭代器
+    quicklistEntry entry; /* Entry in quicklist 快速列表的节点 */
 } listTypeEntry;
 
-/* Structure to hold set iteration abstraction. */
+/* Structure to hold set iteration abstraction. 
+ *
+ * 集合对象的迭代器
+ */
 typedef struct {
-    robj *subject;
-    int encoding;
-    int ii; /* intset iterator */
-    dictIterator *di;
+    robj *subject;  // 被迭代的对象
+    int encoding;   // 被迭代对象的编码
+    int ii; /* intset iterator 整数集合的迭代器 */
+    dictIterator *di;  // 字典的迭代器
 } setTypeIterator;
 
 /* Structure to hold hash iteration abstraction. Note that iteration over
  * hashes involves both fields and values. Because it is possible that
  * not both are required, store pointers in the iterator to avoid
- * unnecessary memory allocation for fields/values. */
+ * unnecessary memory allocation for fields/values. 
+ *
+ * 哈希对象的迭代器
+ */
 typedef struct {
-    robj *subject;
-    int encoding;
+    robj *subject;  // 被迭代的对象
+    int encoding;   // 底层实现，hashtable 或者是 ziplist
 
+    // 当底层实现是 ziplist 的时候，两个指针分别指向键值
     unsigned char *fptr, *vptr;
 
+    // 当底层实现是 hashtable 的时候，dict 迭代器和当前节点的结构
     dictIterator *di;
     dictEntry *de;
 } hashTypeIterator;
@@ -1465,16 +1490,22 @@ void receiveChildInfo(void);
 /* Flags only used by the ZADD command but not by zsetAdd() API: */
 #define ZADD_CH (1<<16)      /* Return num of elements added or updated. */
 
-/* Struct to hold a inclusive/exclusive range spec by score comparison. */
+/* Struct to hold a inclusive/exclusive range spec by score comparison. 
+ * 
+ * 表示数值型开区间/闭区间范围的结构
+ */
 typedef struct {
-    double min, max;
-    int minex, maxex; /* are min or max exclusive? */
+    double min, max; // 最小值和最大值
+    int minex, maxex; /* are min or max exclusive? 是否包含最大最小值，为 1 表示不包含，为 0 表示包含 */
 } zrangespec;
 
-/* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. */
+/* Struct to hold an inclusive/exclusive range spec by lexicographic comparison. 
+ *
+ * 表示字符串型开区间/闭区间范围的结构，大小按照字典序
+ */
 typedef struct {
-    sds min, max;     /* May be set to shared.(minstring|maxstring) */
-    int minex, maxex; /* are min or max exclusive? */
+    sds min, max;     /* May be set to shared.(minstring|maxstring) 最小值和最大值 */
+    int minex, maxex; /* are min or max exclusive? 是否包含最大最小值，为 1 表示不包含，为 0 表示包含 */
 } zlexrangespec;
 
 zskiplist *zslCreate(void);

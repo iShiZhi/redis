@@ -38,7 +38,11 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
 
 /* Factory method to return a set that *can* hold "value". When the object has
  * an integer-encodable value, an intset will be returned. Otherwise a regular
- * hash table. */
+ * hash table. 
+ *
+ * 创建一个可以保存 value 值的集合
+ * 如果对象为整数，则返回 intset，否则返回 hashtable
+ */
 robj *setTypeCreate(sds value) {
     if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)
         return createIntsetObject();
@@ -48,30 +52,42 @@ robj *setTypeCreate(sds value) {
 /* Add the specified value into a set.
  *
  * If the value was already member of the set, nothing is done and 0 is
- * returned, otherwise the new element is added and 1 is returned. */
+ * returned, otherwise the new element is added and 1 is returned. 
+ *
+ * 将 value 加入集合 subject，若已经存在，则返回 0，否则返回 1
+ */
 int setTypeAdd(robj *subject, sds value) {
     long long llval;
     if (subject->encoding == OBJ_ENCODING_HT) {
         dict *ht = subject->ptr;
-        dictEntry *de = dictAddRaw(ht,value,NULL);
+        // 如果已经存在，dictAddRaw 返回的是 NULL，跳过处理
+        // 否则将 value 作为键存入，值设为 NULL
+        dictEntry *de = dictAddRaw(ht,value,NULL); 
         if (de) {
             dictSetKey(ht,de,sdsdup(value));
             dictSetVal(ht,de,NULL);
             return 1;
         }
     } else if (subject->encoding == OBJ_ENCODING_INTSET) {
+        // 判断是否是整数值，如果是，则插入，否则的话，需要把 intset 换成 hashtable
         if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             uint8_t success = 0;
             subject->ptr = intsetAdd(subject->ptr,llval,&success);
             if (success) {
                 /* Convert to regular set when the intset contains
-                 * too many entries. */
+                 * too many entries. 
+                 * 
+                 * 如果节点数过多，则将 intset 转成 hashtable
+                 */
                 if (intsetLen(subject->ptr) > server.set_max_intset_entries)
                     setTypeConvert(subject,OBJ_ENCODING_HT);
                 return 1;
             }
         } else {
-            /* Failed to get integer from object, convert to regular set. */
+            /* Failed to get integer from object, convert to regular set. 
+             *
+             * 如果新插入的值不是整数值，则需要把 intset 换成 hashtable
+             */
             setTypeConvert(subject,OBJ_ENCODING_HT);
 
             /* The set *was* an intset and this value is not integer
@@ -85,6 +101,9 @@ int setTypeAdd(robj *subject, sds value) {
     return 0;
 }
 
+/*
+ * 从集合中删除一个元素
+ */
 int setTypeRemove(robj *setobj, sds value) {
     long long llval;
     if (setobj->encoding == OBJ_ENCODING_HT) {
@@ -104,6 +123,9 @@ int setTypeRemove(robj *setobj, sds value) {
     return 0;
 }
 
+/*
+ * 判断集合中是否存在元素 value
+ */
 int setTypeIsMember(robj *subject, sds value) {
     long long llval;
     if (subject->encoding == OBJ_ENCODING_HT) {
@@ -118,6 +140,9 @@ int setTypeIsMember(robj *subject, sds value) {
     return 0;
 }
 
+/*
+ * 创建一个集合对象的迭代器
+ */
 setTypeIterator *setTypeInitIterator(robj *subject) {
     setTypeIterator *si = zmalloc(sizeof(setTypeIterator));
     si->subject = subject;
@@ -132,6 +157,9 @@ setTypeIterator *setTypeInitIterator(robj *subject) {
     return si;
 }
 
+/*
+ * 释放集合对象的迭代器
+ */
 void setTypeReleaseIterator(setTypeIterator *si) {
     if (si->encoding == OBJ_ENCODING_HT)
         dictReleaseIterator(si->di);
@@ -150,7 +178,10 @@ void setTypeReleaseIterator(setTypeIterator *si) {
  * be NULL since the function will try to defensively populate the non
  * used field with values which are easy to trap if misused.
  *
- * When there are no longer elements -1 is returned. */
+ * When there are no longer elements -1 is returned. 
+ * 
+ * 取出被迭代器指向的当前集合元素，如果是整型数，则元素值保存在 llele 中，否则保存在 sdsele 中
+ */
 int setTypeNext(setTypeIterator *si, sds *sdsele, int64_t *llele) {
     if (si->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictNext(si->di);
@@ -173,7 +204,10 @@ int setTypeNext(setTypeIterator *si, sds *sdsele, int64_t *llele) {
  * sdsfree() against it.
  *
  * This function is the way to go for write operations where COW is not
- * an issue. */
+ * an issue. 
+ *
+ * 将 setTypeNext 取出的元素封装成对象返回
+ */
 sds setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
     sds sdsele;
@@ -204,7 +238,10 @@ sds setTypeNextObject(setTypeIterator *si) {
  *
  * Note that both the sdsele and llele pointers should be passed and cannot
  * be NULL since the function will try to defensively populate the non
- * used field with values which are easy to trap if misused. */
+ * used field with values which are easy to trap if misused. 
+ *
+ * 返回集合中一个随机的元素
+ */
 int setTypeRandomElement(robj *setobj, sds *sdsele, int64_t *llele) {
     if (setobj->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictGetRandomKey(setobj->ptr);
@@ -219,6 +256,9 @@ int setTypeRandomElement(robj *setobj, sds *sdsele, int64_t *llele) {
     return setobj->encoding;
 }
 
+/*
+ * 返回集合中的元素个数
+ */
 unsigned long setTypeSize(const robj *subject) {
     if (subject->encoding == OBJ_ENCODING_HT) {
         return dictSize((const dict*)subject->ptr);
@@ -231,7 +271,10 @@ unsigned long setTypeSize(const robj *subject) {
 
 /* Convert the set to specified encoding. The resulting dict (when converting
  * to a hash table) is presized to hold the number of elements in the original
- * set. */
+ * set. 
+ *
+ * 将 intset 转换成 hashtable
+ */
 void setTypeConvert(robj *setobj, int enc) {
     setTypeIterator *si;
     serverAssertWithInfo(NULL,setobj,setobj->type == OBJ_SET &&

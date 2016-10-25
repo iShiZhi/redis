@@ -33,7 +33,7 @@
 
 /* Double expansion needed for stringification of macro values. 
  * 
- * Redis 可以使用 tcmalloc 或者 libc 提供的 malloc
+ * Redis 可以使用 tcmalloc、tcmalloc 或者 libc 提供的 malloc
  * 在分配空间的同时，Redis 将在分配的空间首个字节之前，存入该空间的大小，以便管理
  */
 #define __xstr(s) __str(s)
